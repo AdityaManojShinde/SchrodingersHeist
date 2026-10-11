@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schrödinger's Heist — Quantum Simulator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              cyan: '#06b6d4',
+              emerald: '#10b981',
+              violet: '#8b5cf6',
+              amber: '#f59e0b',
+              rose: '#f43f5e',
+            }
+          },
+          fontFamily: {
+            mono: ['JetBrains Mono', 'Fira Code', 'Courier New', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes pulse-subtle {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .animate-pulse-subtle {
+      animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-cyan-500 selection:text-black">
+
+  <!-- Header / Navigation -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+          <span class="text-xl font-bold font-mono text-white">|Ψ⟩</span>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-wider uppercase bg-gradient-to-r from-cyan-400 via-sky-300 to-violet-400 bg-clip-text text-transparent">
+            Schrödinger's Heist
+          </h1>
+          <p class="text-xs text-slate-400">Quantum Infiltration Protocol</p>
+        </div>
+      </div>
+
+      <!-- Controls: Level Select & Quick Actions -->
+      <div class="flex items-center space-x-3">
+        <div class="flex items-center space-x-2 bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-1.5">
+          <label for="levelSelect" class="text-xs font-medium text-slate-400 uppercase">Level:</label>
+          <select id="levelSelect" onchange="changeLevel(this.value)" class="bg-transparent text-sm font-semibold text-cyan-300 focus:outline-none cursor-pointer">
+            <option value="1" class="bg-slate-800 text-white">Level 1: The Door</option>
+            <option value="2" class="bg-slate-800 text-white">Level 2: Hallway of Mirrors</option>
+            <option value="3" class="bg-slate-800 text-white">Level 3: Twin Corridors</option>
+            <option value="4" class="bg-slate-800 text-white">Level 4: Bell Alibi</option>
+            <option value="5" class="bg-slate-800 text-white">Level 5: The Grand Vault</option>
+          </select>
+        </div>
+
+        <button onclick="restartLevel()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium rounded-lg border border-slate-700 transition flex items-center space-x-1.5 shadow-sm">
+          <span>↺</span>
+          <span>Reset</span>
+        </button>
+
+        <div id="statusBadge" class="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider flex items-center space-x-1.5 bg-cyan-950/80 text-cyan-400 border border-cyan-800/60">
+          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+          <span>STEALTH</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Mission Briefing Banner -->
+    <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5 shadow-xl relative overflow-hidden">
+      <div class="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="space-y-1.5">
+          <div class="flex items-center space-x-3">
+            <span id="levelTitle" class="text-xl font-bold text-white tracking-wide">Loading Level...</span>
+            <span id="levelQubitsBadge" class="px-2 py-0.5 text-xs font-mono rounded bg-slate-800 border border-slate-700 text-slate-300">1 Qubit</span>
+            <span id="vaultTargetBadge" class="px-2 py-0.5 text-xs font-mono rounded bg-amber-950/80 border border-amber-800 text-amber-300 flex items-center space-x-1">
+              <span>🏆 Target:</span>
+              <span id="vaultRoomName">Vault</span>
+            </span>
+          </div>
+          <p id="levelStory" class="text-sm text-slate-300 leading-relaxed max-w-3xl">Mission story loading...</p>
+          <div class="pt-1 flex items-center space-x-2">
+            <span class="text-xs font-mono text-cyan-400/90 font-semibold">QUANTUM CONCEPT:</span>
+            <span id="levelConcept" class="text-xs text-slate-400 italic">Interference concept...</span>
+          </div>
+        </div>
+
+        <!-- Tick Progress Gauge -->
+        <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-3.5 flex flex-col items-center justify-center min-w-[140px] text-center shadow-inner">
+          <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Mission Timeline</span>
+          <div class="mt-1 flex items-baseline space-x-1">
+            <span id="currentTick" class="text-2xl font-bold font-mono text-cyan-400">0</span>
+            <span class="text-sm font-mono text-slate-500">/</span>
+            <span id="maxTicks" class="text-sm font-mono text-slate-400">2</span>
+          </div>
+          <span class="text-[10px] text-slate-400 mt-0.5">Ticks Elapsed</span>
+        </div>
+      </div>
+
+      <!-- Patrol Schedule Timeline Bar -->
+      <div class="mt-4 pt-4 border-t border-slate-800/80">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-mono text-slate-400 uppercase tracking-wider">Guard Patrol Schedule:</span>
+          <span class="text-[11px] text-slate-400">Guards measure inspected rooms each tick</span>
+        </div>
+        <div id="patrolTimeline" class="flex flex-wrap gap-2">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Gameplay Dashboard Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- Left: Quantum Statevector & Room Chambers (7 cols) -->
+      <div class="lg:col-span-7 space-y-4">
+        <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5 shadow-xl">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center space-x-2">
+              <h2 class="text-base font-bold text-white tracking-wide">Chamber Wavefunction |Ψ⟩</h2>
+              <span class="text-xs text-slate-400 font-mono">(Superposition State)</span>
+            </div>
+            <div class="flex items-center space-x-3 text-xs">
+              <span class="flex items-center space-x-1 text-slate-400">
+                <span class="w-2.5 h-2.5 rounded bg-emerald-500 inline-block"></span>
+                <span>[+] 0</span>
+              </span>
+              <span class="flex items-center space-x-1 text-slate-400">
+                <span class="w-2.5 h-2.5 rounded bg-amber-400 inline-block"></span>
+                <span>[-] π</span>
+              </span>
+              <span class="flex items-center space-x-1 text-slate-400">
+                <span class="w-2.5 h-2.5 rounded bg-cyan-400 inline-block"></span>
+                <span>[±i] π/2</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Rooms Superposition Table -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="border-b border-slate-800 text-[11px] font-mono text-slate-400 uppercase tracking-wider">
+                  <th class="pb-2 pl-2">Room</th>
+                  <th class="pb-2">State</th>
+                  <th class="pb-2">Probability</th>
+                  <th class="pb-2">Phase</th>
+                  <th class="pb-2 pr-2 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody id="roomsTableBody" class="divide-y divide-slate-800/60 font-mono text-sm">
+                <!-- Dynamically generated room rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Mission Log / Patrol Outcome Notice -->
+        <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 shadow-xl">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center space-x-2">
+              <span class="w-2 h-2 rounded-full bg-cyan-500"></span>
+              <span>Tactical Patrol Report</span>
+            </span>
+            <span id="logTimestamp" class="text-[10px] text-slate-400 font-mono">Real-time</span>
+          </div>
+          <div id="patrolReportBox" class="p-3 rounded-lg bg-slate-950/80 border border-slate-800 font-mono text-xs text-slate-300 leading-relaxed min-h-[50px] flex items-center">
+            Awaiting quantum operator execution...
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Quantum Toolbox & Tactical Assistant (5 cols) -->
+      <div class="lg:col-span-5 space-y-4">
+
+        <!-- Quantum Toolbox Card -->
+        <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-base font-bold text-white tracking-wide">Quantum Toolbox</h2>
+            <span class="text-xs text-slate-400">Available Operators</span>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Execute a quantum gate to evolve your spatial wavefunction. Use <strong class="text-amber-400">Peek</strong> to simulate detection risk before moving!
+          </p>
+
+          <!-- Dynamic Toolbox Action Buttons -->
+          <div id="toolboxContainer" class="space-y-2.5">
+            <!-- Dynamically populated actions -->
+          </div>
+        </div>
+
+        <!-- Tactical Analysis & Assistants -->
+        <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5 shadow-xl space-y-3">
+          <h3 class="text-xs font-mono text-slate-400 uppercase tracking-wider">Tactical Analytics & Solvers</h3>
+          <div class="grid grid-cols-3 gap-2">
+            <button onclick="requestHint()" class="p-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-medium text-amber-300 hover:text-amber-200 transition flex flex-col items-center justify-center space-y-1 group">
+              <span class="text-base">💡</span>
+              <span>Hint</span>
+            </button>
+            <button onclick="requestScan()" class="p-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-medium text-cyan-300 hover:text-cyan-200 transition flex flex-col items-center justify-center space-y-1 group">
+              <span class="text-base">🔍</span>
+              <span>Risk Scan</span>
+            </button>
+            <button onclick="requestReplay()" class="p-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-medium text-violet-300 hover:text-violet-200 transition flex flex-col items-center justify-center space-y-1 group">
+              <span class="text-base">📊</span>
+              <span>Replay</span>
+            </button>
+          </div>
+          <div id="hintMessageBox" class="hidden p-3 rounded-lg bg-amber-950/40 border border-amber-800/60 text-xs text-amber-200 font-mono leading-relaxed">
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Modals -->
+
+  <!-- 1. Peek Preview Modal -->
+  <div id="peekModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center space-x-2">
+          <span class="text-lg">👁️</span>
+          <h3 class="text-base font-bold text-white">Wavefunction Peek Preview</h3>
+        </div>
+        <button onclick="closeModal('peekModal')" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
+      </div>
+
+      <div class="space-y-3">
+        <div class="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800">
+          <div>
+            <span class="text-xs text-slate-400 block">Operator Evaluated</span>
+            <span id="peekActionName" class="text-sm font-mono font-bold text-cyan-300">h0</span>
+          </div>
+          <div class="text-right">
+            <span class="text-xs text-slate-400 block">Catch Risk</span>
+            <span id="peekRiskBadge" class="text-sm font-mono font-bold text-emerald-400">0.0% (ZERO RISK)</span>
+          </div>
+        </div>
+
+        <div>
+          <span class="text-xs font-mono uppercase text-slate-400 tracking-wider block mb-2">Projected Probabilities After Move:</span>
+          <div id="peekRoomsList" class="space-y-2 max-h-56 overflow-y-auto pr-1">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800">
+        <button onclick="closeModal('peekModal')" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition">
+          Dismiss
+        </button>
+        <button id="peekCommitBtn" onclick="commitPeekAction()" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-lg shadow-cyan-600/30 transition">
+          Commit Move
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Risk Scan Modal -->
+  <div id="scanModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center space-x-2">
+            <span>🔍</span>
+            <span>Prefix Risk Scan (1,024 Shots)</span>
+          </h3>
+          <p class="text-xs text-slate-400">Backend shot-based validation vs exact Statevector probability</p>
+        </div>
+        <button onclick="closeModal('scanModal')" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
+      </div>
+
+      <div class="overflow-x-auto max-h-96">
+        <table class="w-full text-left border-collapse text-xs font-mono">
+          <thead>
+            <tr class="border-b border-slate-800 text-slate-400 uppercase tracking-wider">
+              <th class="p-2">Tick</th>
+              <th class="p-2">Move</th>
+              <th class="p-2">Guarded Rooms</th>
+              <th class="p-2">Backend Est (Shots)</th>
+              <th class="p-2">Exact SV</th>
+              <th class="p-2">Risk Status</th>
+            </tr>
+          </thead>
+          <tbody id="scanTableBody" class="divide-y divide-slate-800/60">
+            <!-- Scan rows -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="flex justify-end pt-2">
+        <button onclick="closeModal('scanModal')" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Heist Replay Modal -->
+  <div id="replayModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-[70] hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center space-x-2">
+            <span>📊</span>
+            <span>Quantum Heist Replay & Circuit Analysis</span>
+          </h3>
+          <p class="text-xs text-slate-400">2,048-shot Aer/Basic simulator measurement & transpiled circuit</p>
+        </div>
+        <button onclick="closeModal('replayModal')" class="text-slate-400 hover:text-white text-xl font-bold p-1 leading-none">&times;</button>
+      </div>
+
+      <div class="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+        <!-- Circuit Diagram -->
+        <div>
+          <span class="text-xs font-mono uppercase text-cyan-400 tracking-wider block mb-1">Executed Quantum Circuit:</span>
+          <pre id="circuitAsciiPre" class="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-cyan-300 overflow-x-auto leading-tight"></pre>
+        </div>
+
+        <!-- Shot Measurement Histogram -->
+        <div>
+          <span class="text-xs font-mono uppercase text-violet-400 tracking-wider block mb-2">Final Measurement Histogram (2,048 Shots):</span>
+          <div id="replayHistogramList" class="space-y-2">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-3 border-t border-slate-800">
+        <button onclick="closeModal('replayModal')" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition flex items-center space-x-1.5">
+          <span>←</span>
+          <span>Back to Results</span>
+        </button>
+        <button onclick="closeAllModals(); advanceNextLevel();" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-lg shadow-cyan-600/30 transition flex items-center space-x-1.5">
+          <span>Next Level</span>
+          <span>→</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Victory / Failure Result Modal -->
+  <div id="resultModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl text-center space-y-5">
+      <div id="resultIcon" class="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-lg">
+        🏆
+      </div>
+
+      <div class="space-y-2">
+        <h3 id="resultTitle" class="text-xl font-bold text-white">MISSION ACCOMPLISHED</h3>
+        <p id="resultSubtitle" class="text-xs text-slate-300 leading-relaxed">Vault loot secured with zero guard detection.</p>
+      </div>
+
+      <!-- Rating Box -->
+      <div id="ratingBox" class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+        <div id="ratingStars" class="text-2xl text-amber-400 tracking-widest font-bold">
+          ★ ★ ★
+        </div>
+        <div id="ratingCategory" class="text-sm font-bold text-white font-mono">
+          Ghost Run
+        </div>
+        <p id="ratingSummary" class="text-xs text-slate-400">
+          Pure quantum interference with 0.0% risk.
+        </p>
+      </div>
+
+      <div class="flex items-center justify-center space-x-3 pt-2">
+        <button onclick="restartLevel()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition">
+          Try Again
+        </button>
+        <button onclick="requestReplay()" class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold shadow-lg shadow-violet-600/30 transition">
+          View Replay
+        </button>
+        <button id="nextLevelBtn" onclick="advanceNextLevel()" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-lg shadow-cyan-600/30 transition">
+          Next Level →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Client-side Logic -->
+  <script>
+    let currentSessionId = localStorage.getItem("schrodinger_session_id") || "";
+    let currentGameState = null;
+    let pendingPeekAction = null;
+
+    // Phase color maps
+    function getPhaseBadge(phase) {
+      if (phase.type === "zero") {
+        return '<span class="text-slate-600">—</span>';
+      }
+      if (phase.type === "plus") {
+        return '<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">[ + ]</span>';
+      }
+      if (phase.type === "minus") {
+        return '<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-950 text-amber-400 border border-amber-800">[ - ]</span>';
+      }
+      if (phase.type === "plus_i") {
+        return '<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-cyan-950 text-cyan-400 border border-cyan-800">[+i ]</span>';
+      }
+      if (phase.type === "minus_i") {
+        return '<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-violet-950 text-violet-400 border border-violet-800">[-i ]</span>';
+      }
+      return `<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-slate-800 text-purple-300 border border-slate-700">${phase.label}</span>`;
+    }
+
+    async function initGame(levelNum = 1) {
+      try {
+        const res = await fetch("/api/game/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ level_num: parseInt(levelNum), session_id: currentSessionId || null }),
+        });
+        if (!res.ok) throw new Error("Failed to start level");
+        const data = await res.json();
+        currentSessionId = data.session_id;
+        localStorage.setItem("schrodinger_session_id", currentSessionId);
+        updateUI(data);
+      } catch (err) {
+        console.error(err);
+        alert("Error initializing game: " + err.message);
+      }
+    }
+
+    function changeLevel(lvl) {
+      closeAllModals();
+      initGame(lvl);
+    }
+
+    function restartLevel() {
+      closeAllModals();
+      const lvl = document.getElementById("levelSelect").value;
+      initGame(lvl);
+    }
+
+    function advanceNextLevel() {
+      closeAllModals();
+      const cur = parseInt(document.getElementById("levelSelect").value);
+      if (cur < 5) {
+        document.getElementById("levelSelect").value = (cur + 1).toString();
+        initGame(cur + 1);
+      } else {
+        alert("Congratulations! You completed all levels of Schrödinger's Heist!");
+      }
+    }
+
+    async function executeAction(action) {
+      try {
+        const res = await fetch("/api/game/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: currentSessionId, action: action }),
+        });
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.detail || "Action failed");
+        }
+        const data = await res.json();
+        updateUI(data);
+      } catch (err) {
+        alert("Action error: " + err.message);
+      }
+    }
+
+    async function peekAction(action) {
+      try {
+        const res = await fetch("/api/game/peek", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: currentSessionId, action: action }),
+        });
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.detail || "Peek failed");
+        }
+        const data = await res.json();
+        pendingPeekAction = action;
+
+        // Render peek modal
+        document.getElementById("peekActionName").textContent = action.toUpperCase();
+        const riskBadge = document.getElementById("peekRiskBadge");
+        riskBadge.textContent = data.risk_status;
+        if (data.p_caught < 1e-6) {
+          riskBadge.className = "text-sm font-mono font-bold text-emerald-400";
+        } else {
+          riskBadge.className = "text-sm font-mono font-bold text-rose-400";
+        }
+
+        const roomsList = document.getElementById("peekRoomsList");
+        roomsList.innerHTML = "";
+        data.rooms.forEach(r => {
+          const isGuarded = r.is_guarded;
+          const row = document.createElement("div");
+          row.className = `p-2 rounded-lg border text-xs font-mono flex items-center justify-between ${
+            isGuarded ? "bg-rose-950/30 border-rose-800/60" : "bg-slate-950 border-slate-800"
+          }`;
+          row.innerHTML = `
+            <div class="flex items-center space-x-2">
+              <span class="text-cyan-400 font-bold">|${r.bitstring}⟩</span>
+              <span class="text-slate-300">${r.name}</span>
+            </div>
+            <div class="flex items-center space-x-3">
+              <span class="text-slate-400">${getPhaseBadge(r.phase)}</span>
+              <span class="font-bold ${r.probability > 0 ? 'text-cyan-300' : 'text-slate-500'}">${r.probability_pct}%</span>
+              ${isGuarded ? '<span class="text-[10px] text-rose-400 font-bold">[GUARD]</span>' : ''}
+            </div>
+          `;
+          roomsList.appendChild(row);
+        });
+
+        openModal("peekModal");
+      } catch (err) {
+        alert("Peek error: " + err.message);
+      }
+    }
+
+    function commitPeekAction() {
+      closeModal("peekModal");
+      if (pendingPeekAction) {
+        executeAction(pendingPeekAction);
+        pendingPeekAction = null;
+      }
+    }
+
+    async function requestHint() {
+      try {
+        const res = await fetch("/api/game/hint", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: currentSessionId }),
+        });
+        const data = await res.json();
+        const hintBox = document.getElementById("hintMessageBox");
+        hintBox.classList.remove("hidden");
+        hintBox.innerHTML = `<strong>💡 Tactical Hint:</strong> ${data.explanation}`;
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function requestScan() {
+      try {
+        const res = await fetch("/api/game/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: currentSessionId }),
+        });
+        const data = await res.json();
+        const tbody = document.getElementById("scanTableBody");
+        tbody.innerHTML = "";
+
+        if (data.steps.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">${data.message}</td></tr>`;
+        } else {
+          data.steps.forEach(s => {
+            const tr = document.createElement("tr");
+            const isZero = s.status === "ZERO RISK";
+            tr.className = isZero ? "bg-slate-900/40" : "bg-rose-950/20";
+            tr.innerHTML = `
+              <td class="p-2 text-cyan-400 font-bold">Tick ${s.step}</td>
+              <td class="p-2 font-bold">${s.action}</td>
+              <td class="p-2 text-slate-300">${s.guarded_rooms_str}</td>
+              <td class="p-2">${s.backend_est_pct}% (${s.shots_caught}/${s.total_shots})</td>
+              <td class="p-2">${s.exact_sv_pct}%</td>
+              <td class="p-2 font-bold ${isZero ? 'text-emerald-400' : 'text-rose-400'}">${s.status}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        }
+        openModal("scanModal");
+      } catch (err) {
+        alert("Scan error: " + err.message);
+      }
+    }
+
+    async function requestReplay() {
+      const replayButtons = document.querySelectorAll("button[onclick*='requestReplay']");
+      const prevContents = [];
+      replayButtons.forEach(btn => {
+        prevContents.push({ btn, html: btn.innerHTML });
+        btn.innerHTML = '<span class="animate-spin inline-block mr-1">🌀</span><span>Simulating...</span>';
+        btn.disabled = true;
+      });
+
+      try {
+        const res = await fetch("/api/game/replay", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: currentSessionId, shots: 2048 }),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `Server error (${res.status})`);
+        }
+
+        const data = await res.json();
+        if (!data || !data.histogram) {
+          throw new Error("Invalid replay response from server.");
+        }
+
+        document.getElementById("circuitAsciiPre").textContent = data.circuit_ascii || "No circuit data available.";
+
+        const histList = document.getElementById("replayHistogramList");
+        histList.innerHTML = "";
+        data.histogram.forEach(h => {
+          const row = document.createElement("div");
+          row.className = "flex items-center justify-between p-2 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono";
+          row.innerHTML = `
+            <div class="flex items-center space-x-2 w-48">
+              <span class="text-cyan-400 font-bold">|${h.bitstring}⟩</span>
+              <span class="text-slate-300 truncate">${h.name}</span>
+              ${h.is_vault ? '<span class="text-[10px] text-amber-400 font-bold">[VAULT]</span>' : ''}
+            </div>
+            <div class="flex-1 mx-4">
+              <div class="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                <div class="${h.is_vault ? 'bg-amber-400' : 'bg-cyan-500'} h-2.5 rounded-full" style="width: ${h.percentage}%"></div>
+              </div>
+            </div>
+            <div class="w-24 text-right">
+              <span class="font-bold text-white">${h.percentage}%</span>
+              <span class="text-slate-500 text-[10px]">(${h.count})</span>
+            </div>
+          `;
+          histList.appendChild(row);
+        });
+
+        openModal("replayModal");
+      } catch (err) {
+        console.error("Replay error:", err);
+        alert("Replay error: " + err.message);
+      } finally {
+        prevContents.forEach(item => {
+          item.btn.innerHTML = item.html;
+          item.btn.disabled = false;
+        });
+      }
+    }
+
+    function updateUI(data) {
+      currentGameState = data;
+      const lvl = data.level;
+
+      // Header & Briefing
+      document.getElementById("levelSelect").value = lvl.num.toString();
+      document.getElementById("levelTitle").textContent = `Level ${lvl.num}: ${lvl.title}`;
+      document.getElementById("levelQubitsBadge").textContent = `${lvl.n} Qubit${lvl.n > 1 ? 's' : ''}`;
+      document.getElementById("vaultRoomName").textContent = lvl.vault_name;
+      document.getElementById("levelStory").textContent = lvl.story;
+      document.getElementById("levelConcept").textContent = lvl.concept;
+
+      // Timeline / Tick Gauge
+      document.getElementById("currentTick").textContent = data.tick.toString();
+      document.getElementById("maxTicks").textContent = lvl.T.toString();
+
+      // Patrol Timeline
+      const patrolTimeline = document.getElementById("patrolTimeline");
+      patrolTimeline.innerHTML = "";
+      lvl.schedule.forEach(s => {
+        const pill = document.createElement("div");
+        let borderClass = "border-slate-800 bg-slate-950/60 text-slate-400";
+        if (s.is_current) {
+          borderClass = "border-amber-500 bg-amber-950/40 text-amber-300 ring-2 ring-amber-500/40 shadow-lg shadow-amber-500/20";
+        } else if (s.is_past) {
+          borderClass = "border-slate-700 bg-slate-900/60 text-slate-500 opacity-60";
+        }
+        pill.className = `px-2.5 py-1.5 rounded-lg border text-xs font-mono flex items-center space-x-1.5 ${borderClass}`;
+        const roomNamesStr = s.guarded_names.length > 0 ? s.guarded_names.join(", ") : "None";
+        pill.innerHTML = `
+          <span class="font-bold">T${s.tick}:</span>
+          <span class="truncate max-w-[120px]">${roomNamesStr}</span>
+        `;
+        patrolTimeline.appendChild(pill);
+      });
+
+      // Rooms Table
+      const roomsTbody = document.getElementById("roomsTableBody");
+      roomsTbody.innerHTML = "";
+      data.rooms.forEach(r => {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-800/40 transition";
+        const probWidth = Math.max(0, Math.min(100, r.probability_pct));
+        tr.innerHTML = `
+          <td class="py-2.5 pl-2 font-medium text-slate-200">
+            ${r.name}
+          </td>
+          <td class="py-2.5 text-cyan-400 font-bold">
+            |${r.bitstring}⟩
+          </td>
+          <td class="py-2.5">
+            <div class="flex items-center space-x-2">
+              <div class="w-24 bg-slate-800 rounded-full h-2 overflow-hidden">
+                <div class="h-2 rounded-full ${r.is_vault ? 'bg-amber-400' : 'bg-cyan-500'}" style="width: ${probWidth}%"></div>
+              </div>
+              <span class="${r.probability > 0 ? 'text-white font-bold' : 'text-slate-500'}">${r.probability_pct}%</span>
+            </div>
+          </td>
+          <td class="py-2.5">
+            ${getPhaseBadge(r.phase)}
+          </td>
+          <td class="py-2.5 pr-2 text-right space-x-1">
+            ${r.is_vault ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800">[VAULT]</span>' : ''}
+            ${r.is_guarded_next ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950/80 text-rose-300 border border-rose-800 animate-pulse">[GUARD LOOKING]</span>' : ''}
+          </td>
+        `;
+        roomsTbody.appendChild(tr);
+      });
+
+      // Tactical Patrol Report Box
+      const reportBox = document.getElementById("patrolReportBox");
+      if (data.last_check_msg) {
+        reportBox.textContent = data.last_check_msg;
+      } else {
+        reportBox.textContent = "Wavefunction initialized in starting lobby. Select a quantum move to begin the heist.";
+      }
+
+      // Status Badge
+      const statusBadge = document.getElementById("statusBadge");
+      if (data.won) {
+        statusBadge.className = "px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider flex items-center space-x-1.5 bg-emerald-950 text-emerald-400 border border-emerald-800";
+        statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span>MISSION WON</span>';
+      } else if (data.failed) {
+        statusBadge.className = "px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider flex items-center space-x-1.5 bg-rose-950 text-rose-400 border border-rose-800";
+        statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-400"></span><span>ALARM TRIGGERED</span>';
+      } else {
+        statusBadge.className = "px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider flex items-center space-x-1.5 bg-cyan-950/80 text-cyan-400 border border-cyan-800/60";
+        statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span><span>STEALTH</span>';
+      }
+
+      // Toolbox Container
+      const tbContainer = document.getElementById("toolboxContainer");
+      tbContainer.innerHTML = "";
+      lvl.toolbox.forEach(tool => {
+        const card = document.createElement("div");
+        card.className = "p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between hover:border-slate-700 transition";
+        card.innerHTML = `
+          <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-lg bg-cyan-950/80 border border-cyan-800/80 flex items-center justify-center font-mono font-bold text-cyan-300 text-sm">
+              ${tool.token.toUpperCase()}
+            </div>
+            <div>
+              <div class="flex items-center space-x-2">
+                <span class="text-xs font-bold text-white">${tool.flavour}</span>
+                <span class="text-[10px] font-mono text-slate-400">(${tool.gate})</span>
+              </div>
+              <p class="text-[11px] text-slate-400">${tool.desc}</p>
+            </div>
+          </div>
+          <div class="flex items-center space-x-1.5">
+            <button onclick="peekAction('${tool.token}')" ${data.won || data.failed ? 'disabled' : ''} class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 text-xs font-medium border border-slate-700 transition disabled:opacity-40 disabled:cursor-not-allowed">
+              👁️ Peek
+            </button>
+            <button onclick="executeAction('${tool.token}')" ${data.won || data.failed ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-md shadow-cyan-600/20 transition disabled:opacity-40 disabled:cursor-not-allowed">
+              Move →
+            </button>
+          </div>
+        `;
+        tbContainer.appendChild(card);
+      });
+
+      // Victory / Failure Modal trigger
+      if (data.won || data.failed) {
+        showEndgameModal(data);
+      }
+    }
+
+    function showEndgameModal(data) {
+      const modal = document.getElementById("resultModal");
+      const icon = document.getElementById("resultIcon");
+      const title = document.getElementById("resultTitle");
+      const subtitle = document.getElementById("resultSubtitle");
+      const stars = document.getElementById("ratingStars");
+      const cat = document.getElementById("ratingCategory");
+      const sum = document.getElementById("ratingSummary");
+      const nextBtn = document.getElementById("nextLevelBtn");
+
+      if (data.won) {
+        icon.className = "w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-lg bg-emerald-950/80 border border-emerald-700 text-emerald-400 shadow-emerald-500/20";
+        icon.textContent = "🏆";
+        title.textContent = "VAULT HEIST SUCCESSFUL!";
+        subtitle.textContent = "Quantum register measured in Vault! Clean quantum escape.";
+        if (data.rating) {
+          const starCount = data.rating.stars;
+          stars.textContent = "★".repeat(starCount) + "☆".repeat(3 - starCount);
+          cat.textContent = `${data.rating.title} (${starCount}/3 Stars)`;
+          sum.textContent = data.rating.summary;
+        }
+        nextBtn.classList.remove("hidden");
+      } else {
+        icon.className = "w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl shadow-lg bg-rose-950/80 border border-rose-700 text-rose-400 shadow-rose-500/20";
+        icon.textContent = "🚨";
+        title.textContent = "MISSION FAILED";
+        subtitle.textContent = data.fail_reason || "Caught by guards or missed the vault.";
+        stars.textContent = "☆☆☆";
+        cat.textContent = "Alarm Triggered";
+        sum.textContent = "The wavefunction collapsed into the guard's sensor.";
+        nextBtn.classList.add("hidden");
+      }
+
+      openModal("resultModal");
+    }
+
+    function openModal(id) {
+      document.getElementById(id).classList.remove("hidden");
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add("hidden");
+    }
+
+    function closeAllModals() {
+      ["peekModal", "scanModal", "replayModal", "resultModal"].forEach(closeModal);
+    }
+
+    // Auto initialize on page load
+    window.addEventListener("DOMContentLoaded", () => {
+      initGame(1);
+    });
+  </script>
+</body>
+</html>
